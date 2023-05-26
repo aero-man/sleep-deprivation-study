@@ -3,15 +3,13 @@ title: "Sleep Deprivation and Reaction Time"
 author: "Andrew Roman"
 date: "2023-05-24"
 output:
-  pdf_document: default
   html_document: default
+  pdf_document: default
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
-
-# Effects of Sleep Deprivation on Reaction Time
 
 This is a replication of the analysis on the effects of sleep deprivation on athlete reaction time from [Belenky et al. (2003)](https://pubmed.ncbi.nlm.nih.gov/12603781/).
 
