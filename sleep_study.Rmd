@@ -1,0 +1,303 @@
+---
+title: "Sleep Deprivation and Reaction Time"
+author: "Andrew Roman"
+date: "2023-05-24"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Effects of Sleep Deprivation on Reaction Time
+
+This is a replication of the analysis on the effects of sleep deprivation on athlete reaction time from [Belenky et al. (2003)](https://pubmed.ncbi.nlm.nih.gov/12603781/).
+
+![Image of a cat sleeping under white blankets](kate-stone-matheson-unsplash.jpg)
+*Photo by Kate Stone Matheson on Unsplash.*
+
+This analysis shows how reaction time to the [Psychomotor Vigilance Test (PVT)](https://www.sciencedirect.com/topics/medicine-and-dentistry/psychomotor-vigilance-task) increased in 18 participants over 9 days of sleep deprivation. Participants were tested on day 0, with no supposed deficits in sleep. Then over the next 9 days, they were instructed to spend 7 hours total time in bed (TIB) per night. Note that the data was modified slightly for illustrative purposes and does not include the original groups of participants who were instructed to have 3, 5, and 9 hours total TIB.
+
+The **Psychomotor Vigilance Task** is a reaction time task, where a person clicks a button after they see an image or text appear on a computer screen. Because of it's simplicity, effects of learning from day to day are assume to be negligible.
+
+A linear regression model showed a 10.5 ms increase in reaction time for every night of sleep deprivation (95% CI [7.5, 13.1]; *p < 0.05*).
+
+**Source**. 
+Belenky G, Wesensten NJ, Thorne DR, Thomas ML, Sing HC, Redmond DP, Russo MB, Balkin TJ. Patterns of performance degradation and restoration during sleep restriction and subsequent recovery: a sleep dose-response study. J Sleep Res. 2003 Mar;12(1):1-12. doi: 10.1046/j.1365-2869.2003.00337.x. PMID: 12603781.
+
+### Imports and Data Prep
+```{r}
+#install.packages("infer")
+#install.packages("moderndive")
+library(tidyverse)
+library(moderndive)
+library(infer)
+```
+
+```{r}
+sleep_data <- read.csv('sleepstudy.csv')
+```
+
+```{r}
+control <- sleep_data %>% filter(Condition == "Control")
+deprived <- sleep_data %>% filter(Condition == "Deprived")
+```
+
+## Previewing the Reaction Times Between Groups
+Below, there is a stark contrast between the range of reaction times when participants were well-slept as opposed to when to their reaction times across the 9 days of sleep deprivation. Typical reaction times when well-slept were 200-350ms on the PVT, whereas sleep deprivation caused reaction time to increase to 350-450ms for most participants.
+
+```{r}
+sleep_data %>%
+  ggplot(aes(x = Reaction, fill = Condition)) +
+  geom_histogram(position = "stack", bins = 30) +
+  labs(title = "All Reaction Times by Sleep Deprivation Group")
+```
+
+```{r}
+sleep_data %>%
+  ggplot(aes(Reaction, fill = Condition)) +
+  geom_histogram(bins = 30) +
+  labs(title = "Reaction Times by Sleep Deprivation Group") +
+  facet_wrap(~Condition)
+```
+
+## Sleep Deprived People May Have a 17% Increase in Reaction Time on Average
+
+Sleep deprivation causes a median increase in reaction time of 17% (95% CI [6.0%, 21.2%]). This was calculated by taking the median increases in reaction time for all sleep deprived PVTs (46.5ms) and comparing them to the control median reaction time (253.4ms).
+
+This does not mean that every sleep-deprived person who normally has a 100ms reaction time will then have a 117ms reaction time after poor sleep, especially since the median is calculated over 1-9 days of sleep deprivation. However, it does indicate the degree to which sleep-deprived people walking around everyday, who have varying degrees of sleep loss, may be expected to respond physically in general to that sleep loss. According to the Centers for Disease Control and Prevention (CDC) in the United States, [34-37% of American adults between 2013 and 2020 regluarly failed to get adequate sleep](https://www.cdc.gov/sleep/data-and-statistics/adults.html) (at least 7 hours per night). It is reasonable to expect that a third of American adults then experience a reaction time delay in the realm of 17% (or 46.5ms) (95% CI [17.8, 63.0]) if not more, since the study only stopped at 9 days.
+
+```{r}
+sleep_data %>%
+  ggplot(aes(x = Condition, y = Reaction)) +
+  geom_boxplot() +
+  labs(title = "Distribution of Reaction Times by Sleep Deprivation")
+```
+```{r}
+reaction_times_by_condition <- sleep_data %>%
+  group_by(Condition) %>%
+  summarize(average_reaction_time = mean(Reaction, na.rm = TRUE), median_reaction_time = median(Reaction, na.rm = TRUE))
+reaction_times_by_condition
+```
+
+```{r}
+observed_diff_reaction_time <- sleep_data %>%
+  specify(formula = Reaction ~ Condition) %>%
+  calculate(stat = "diff in medians")
+observed_diff_reaction_time
+```
+
+```{r}
+median_reaction_time_control <- reaction_times_by_condition[1, 3]$median_reaction_time
+percentage_increase_reaction_time <- observed_diff_reaction_time / median_reaction_time_control * 100
+percentage_increase_reaction_time
+```
+
+
+```{r}
+diff_in_medians_ci <-sleep_data %>%
+  specify(formula = Reaction ~ Condition) %>%
+  hypothesize(null = "independence") %>%
+  generate(reps = 1000, type = "bootstrap") %>%
+  calculate(stat = "diff in medians") %>%
+  get_confidence_interval(type = "percentile", level = 0.95)
+diff_in_medians_ci
+```
+
+```{r}
+# Calculate what percentage of the reaction time the upper and lower CIs are
+median_reaction_time <- reaction_times_by_condition[2, 3]$median_reaction_time
+medians_lower_ci <- diff_in_medians_ci$lower_ci
+medians_upper_ci <- diff_in_medians_ci$upper_ci
+lower_ci_percentage <- medians_lower_ci / median_reaction_time * 100
+upper_ci_percentage <- medians_upper_ci / median_reaction_time * 100
+
+lower_ci_percentage
+upper_ci_percentage
+```
+
+```{r}
+reaction_times <- sleep_data %>%
+  group_by(Days) %>%
+  summarize(average_reaction_time = mean(Reaction, na.rm = TRUE), median_reaction_time = median(Reaction, na.rm = TRUE))
+reaction_times
+```
+
+## Reaction Time Increases Roughly 10.5ms a Day
+
+For every day of sleep deprivation (TIB < 7), participants' reaction times increased roughly 10.5ms (95% CI [8.0, 13.0]). This analysis was only over a 9-day span however, and some models indicate an exponential increase in average reaction time toward the last 3 days of the study. The models below may not be well-fitted for predictions of 10-15 days of sleep deprivation and beyond.
+
+```{r}
+sleep_data %>%
+  ggplot(aes(x = Days, y = Reaction, group = Days)) +
+  geom_boxplot() +
+  labs(title = "Mean Reaction Times for All Participants as Sleep Loss Increases")
+```
+
+
+```{r}
+ggplot(reaction_times, aes(x = Days, y = median_reaction_time)) +
+  geom_line() +
+  geom_smooth() +
+  labs(title = "Median Reaction Time as Sleep Deprivation Increases")
+```
+
+```{r}
+linear_model <- lm(Reaction ~ Days, data = sleep_data)
+get_regression_table(linear_model)
+```
+
+```{r}
+sleep_data %>%
+  ggplot(aes(x = Days, y = Reaction)) +
+  geom_point() +
+  geom_smooth(level = 0.95) +
+  labs(title = "Reaction Time as Sleep Deprivation Increases")
+```
+
+```{r}
+observed_sleep_slope <-  sleep_data %>% 
+  specify(formula = Reaction ~ Days) %>%
+  calculate(stat = "slope")
+observed_sleep_slope
+```
+
+## Increase in Reaction Time by Individual Participants
+
+The graph below shows that there is a general upward trend for most participants. Outliers are discussed below.
+
+```{r}
+ggplot(sleep_data, aes(x = Days, y = Reaction, group = Subject, color = Subject)) +
+  geom_line() +
+  labs(title = "Daily Increase in Reaction Time by Participant")
+```
+## Outlier Participants
+
+There are three participants who either do not follow the upward trend or show an erratic trend.
+
+Two participants below, participants "B" and "I", have a reaction time on day 9 that is similar to or lower than their original reaction time when well-slept (day 0). There are a few possible causes for this:
+* The participants did not adhere to the requirement for getting less than 7 hours of sleep per night
+* The participants are part of a small group in the population [who only need around 6.5 hours of sleep per night (Shi et al., 2019)](https://pubmed.ncbi.nlm.nih.gov/31473062/)
+
+It is not possible to ascertain from this data which of the two scenarios actually happened. It may even be the case that participant B was not truthful about their total TIB and participant I simply needed less sleep or vice versa.
+
+Participant F had the greatest increase in reaction time among the entire experimental group with 454ms average reaction time on day 6. On subsequent days though, participant F showed a sharp and consistent downward trend in reaction time. Since the PVT is not a task that one can get better at with learning, it is not likely that participant F suddenly became better at the task on days 7-9 of sleep deprivation. The researchers did not indicate how the participants' sleep deprivation was verified, so it cannot be ruled out that participant F found a way to catch up on sleep and get more than the 7 hours TIB that the study prescribed.
+
+**Source**
+Shi, G., Xing, L., Wu, D., Bhattacharyya, B. J., Jones, C. R., McMahon, T., Chong, S. Y. C., Chen, J. A., Coppola, G., Geschwind, D., Krystal, A., Ptáček, L. J., & Fu, Y. H. (2019). A Rare Mutation of β1-Adrenergic Receptor Affects Sleep/Wake Behaviors. Neuron, 103(6), 1044–1055.e7. https://doi.org/10.1016/j.neuron.2019.07.026
+
+```{r}
+select_subjects <- sleep_data %>%
+  filter(Subject %in% c("B", "F", "I"))
+
+ggplot(select_subjects, aes(x = Days, y = Reaction, group = Subject, color = Subject)) +
+  geom_line() +
+  labs(title = "Outlier Participants with Obscure or No Increase in Reaction Time")
+```
+
+```{r}
+participant_f <- sleep_data %>%
+  filter(Subject == "F")
+max(participant_f$Reaction)
+```
+
+## Confidence Intervals
+
+CI for slope of increase in reaction time (ms) over days of sleep deprivation.
+```{r}
+sleep_data %>%
+  specify(formula = Reaction ~ Days) %>%
+  generate(reps = 1000, type = "bootstrap") %>%
+  calculate(stat = "slope") %>%
+  get_confidence_interval(type = "percentile", level = 0.95)
+```
+
+CI for correlation between reaction time (ms) and days of sleep deprivation.
+```{r}
+sleep_data %>%
+  specify(formula = Reaction ~ Days) %>%
+  generate(reps = 1000, type = "bootstrap") %>%
+  calculate(stat = "correlation") %>%
+  get_confidence_interval(type = "percentile", level = 0.95)
+```
+
+## Hypothesis Testing
+
+As shown below, the increase of reaction time by 10.5 ms per day of sleep deprivation was far outside the expected possibilities of the null distribution. Thus, we reject the null hypothesis that sleep deprivation does not increase reaction time.
+
+P-values are calculated below as being < 0.05. Due to limitations of R and of computers, the p-value is reported as "0", even though that is not possible. However, we can still report that p < 0.05 and therefor statistically significant.
+
+```{r}
+null_distribution <- sleep_data %>%
+  specify(formula = Reaction ~ Days) %>%
+  hypothesize(null = "independence") %>%
+  generate(reps = 1000, type = "permute") %>%
+  calculate(stat = "slope")
+```
+
+```{r}
+null_distribution %>%
+  ggplot(aes(x = stat)) +
+  geom_histogram(bins = 30) +
+  geom_vline(xintercept = observed_sleep_slope$stat) +
+  labs(title = "Null Distribution for Sleep Deprivation")
+```
+
+```{r}
+p_value <- sleep_data %>%
+  specify(formula = Reaction ~ Days) %>%
+  hypothesize(null = "independence") %>%
+  generate(reps = 1000, type = "permute") %>%
+  calculate(stat = "slope") %>%
+  get_p_value(obs_stat = observed_sleep_slope, direction = "right")
+
+options(scipen = 9999)
+precise_p_value <- format.pval(p_value, digits = 10)
+precise_p_value
+```
+
+When formatting the output of the p-value above to extra decimal places, it appears that the p-value is truly `0.0000000000000002220446` instead of `0`. However, this is just a formatting error due to the nature of how computers handle floats (i.e. decimals) in memory, as shown below.
+
+```{r}
+a <- 0
+format.pval(a, digits = 10)
+```
+
+## Predicting 10-15 Days of Sleep Deprivation
+
+Using a linear model, the median reaction time of all participants is expected to be over 400ms after 15 days of sleep deprivation.
+
+```{r}
+summary(linear_model)
+```
+```{r}
+prediction_days <- as.data.frame(c(10, 11, 12, 13, 14, 15))
+colnames(prediction_days) <- c("Days")
+predicted_medians <- predict(linear_model, newdata = prediction_days)
+predictions <- cbind(prediction_days, predicted_medians)
+colnames(predictions) <- c("Days", "median_reaction_time")
+```
+
+```{r}
+real_medians <- reaction_times %>% 
+  select(c("Days", "median_reaction_time"))
+real_medians <- cbind(real_medians, rep(c("Real"), times = 10))
+colnames(real_medians) <- c("Days", "median_reaction_time", "Status")
+
+predictions <- cbind(predictions, rep(c("Predicted"), times = 6))
+colnames(predictions) <- c("Days", "median_reaction_time", "Status")
+
+real_and_predicted <- rbind(real_medians, predictions)
+```
+
+```{r}
+prediction_intercept <- coef(linear_model)[1]
+prediction_slope <- coef(linear_model)[2]
+
+real_and_predicted %>%
+  ggplot(aes(x = Days, y = median_reaction_time, color = Status)) +
+  geom_line() +
+  geom_abline(aes(slope=prediction_slope, intercept=(prediction_intercept))) +
+  labs(title = "Predicted Increase in Reaction Time over 15 Days (Linear Model)")
+```
+
